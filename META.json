@@ -1,0 +1,105 @@
+{
+   "abstract" : "parser for Tora language",
+   "author" : [
+      "unknown"
+   ],
+   "dynamic_config" : 0,
+   "generated_by" : "Module::Build version 0.4, CPAN::Meta::Converter version 2.120921",
+   "license" : [
+      "perl_5"
+   ],
+   "meta-spec" : {
+      "url" : "http://search.cpan.org/perldoc?CPAN::Meta::Spec",
+      "version" : "2"
+   },
+   "name" : "nana",
+   "no_index" : {
+      "directory" : [
+         "inc",
+         "t",
+         "xt"
+      ]
+   },
+   "prereqs" : {
+      "build" : {
+         "requires" : {
+            "Capture::Tiny" : "0",
+            "TAP::Harness" : "3.23",
+            "Test::Base" : "0",
+            "Test::Differences" : "0",
+            "Test::More" : "0.98"
+         }
+      },
+      "configure" : {
+         "requires" : {
+            "Module::Build" : "0.38"
+         }
+      },
+      "runtime" : {
+         "requires" : {
+            "Devel::GlobalDestruction" : "0.04",
+            "Exporter" : "5.58",
+            "File::ShareDir" : "1.03",
+            "File::stat" : "0",
+            "Getopt::Long::Descriptive" : "0",
+            "Module::Compile" : "0",
+            "Scalar::Util" : "0",
+            "Sub::Name" : "0",
+            "perl" : "5.010001"
+         }
+      }
+   },
+   "provides" : {
+      "Nana::Parser" : {
+         "file" : "lib/Nana/Parser.pm",
+         "version" : "0.01"
+      },
+      "Nana::Translator::Perl" : {
+         "file" : "lib/Nana/Translator/Perl.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Builtins" : {
+         "file" : "lib/Nana/Translator/Perl/Builtins.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Class" : {
+         "file" : "lib/Nana/Translator/Perl/Class.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Exception" : {
+         "file" : "lib/Nana/Translator/Perl/Exception.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::FilePackage" : {
+         "file" : "lib/Nana/Translator/Perl/FilePackage.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Object" : {
+         "file" : "lib/Nana/Translator/Perl/Object.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Range" : {
+         "file" : "lib/Nana/Translator/Perl/Range.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Regexp" : {
+         "file" : "lib/Nana/Translator/Perl/Regexp.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::RegexpMatched" : {
+         "file" : "lib/Nana/Translator/Perl/RegexpMatched.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Runtime" : {
+         "file" : "lib/Nana/Translator/Perl/Runtime.pm",
+         "version" : 0
+      }
+   },
+   "release_status" : "stable",
+   "resources" : {
+      "license" : [
+         "http://dev.perl.org/licenses/"
+      ]
+   },
+   "version" : "0.01"
+}

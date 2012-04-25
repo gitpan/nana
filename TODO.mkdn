@@ -1,0 +1,5 @@
+TODO list
+=========
+
+    Str#scan t/tra/object/string.tra
+

@@ -1,0 +1,110 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use 5.10.1;
+use Nana::Translator::Perl;
+use Nana::Parser;
+use Getopt::Long::Descriptive;
+use Data::Dumper;
+use Nana::Translator::Perl::Runtime;
+
+my ($opt, $usage) = describe_options(
+    'nana %o <some-arg>',
+    [],
+    [ 'Dperl', "Dump perl code"   ],
+    [ 'Dtree|Dt',   "Dump AST" ],
+    [ 'eval|e=s',   "Eval expression" ],
+    [ 'I=s@',        "Library path" ],
+    [ 'compile-only|c',   "Compile only" ],
+    [ 'help|h',       "print usage message and exit" ],
+    [ 'version|v',    'print version'],
+);
+if ($opt->help) {
+    print $usage;
+    exit 0;
+}
+if ($opt->version) {
+    print "Nana $Nana::Parser::VERSION\n";
+    exit 0;
+}
+
+
+Nana::Translator::Perl::Runtime->add_libpath($opt->i || []);
+
+my $parser = Nana::Parser->new;
+my $compiler = Nana::Translator::Perl->new();
+if (defined $opt->eval) {
+    my $ast = $parser->parse($opt->eval);
+    say(Dumper($ast)) if $opt->dtree;
+    my $perl = $compiler->compile($ast, '<eval>');
+    if ($opt->compile_only) {
+        say($perl);
+        exit(0);
+    } else {
+        say($perl) if $opt->dperl;
+        eval $perl;
+        die $@ if $@;
+    }
+} elsif (@ARGV) {
+    my $fname = shift @ARGV;
+    open my $fh, '<', $fname;
+    my $ast = $parser->parse(do { local $/; <$fh>; });
+    say(Dumper($ast)) if $opt->dtree;
+    my $perl = $compiler->compile($ast, $fname);
+    if ($opt->compile_only) {
+        print($perl);
+        exit(0);
+    } else {
+        say($perl) if $opt->dperl;
+        eval $perl;
+        die $@ if $@;
+    }
+} else {
+    if (-t STDIN && -t STDOUT && !$opt->compile_only) {
+        while (1) {
+            print(">> ");
+            last if eof(STDIN);
+            my $input = <>;
+
+            my $ast = $parser->parse($input);
+            my $perl = $compiler->compile($ast);
+            say("PERL: $perl") if $opt->dperl;
+            my $ret = eval $perl;
+            die $@ if $@;
+            local $Data::Dumper::Terse = 1;
+            warn Dumper($ret);
+        }
+    } else {
+        my $input = join('', <>);
+        my $ast = $parser->parse($input);
+        my $perl = $compiler->compile($ast);
+        eval $perl;
+        die $@ if $@;
+    }
+}
+
+__END__
+
+=head1 NAME
+
+nana - tora language interpreter
+
+=head1 SYNPOSIS
+
+    nana [-cehI] [long options...] <some-arg>
+                        
+        --Dperl             Dump perl code
+        --Dt --Dtree        Dump AST
+        -e --eval           Eval expression
+        -I                  Library path
+        -c --compile-only   Compile only
+        -h --help           print usage message and exit
+
+=head1 DESCRIPTION
+
+Yet another tora language interpreter on Perl5.
+
+=head1 SEE ALSO
+
+L<http://tora-lang.org>
+

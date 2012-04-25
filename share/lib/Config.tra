@@ -1,0 +1,5 @@
+my $config = {
+    TORA_OS => 'linux',
+    TORA_CC => 'cc',
+};
+sub tora_config { $config }
