@@ -7,7 +7,9 @@ my $class = Module::Build->subclass(
     class => 'My::Builder',
     code => q"
         sub ACTION_test {
-            exec(q{PERL5LIB=./util/:\$PERL5LIB  prove -l --source TRA --source EGTRA --source TCC -r -Ilib t/ t/*/*/*.tcc t/*/*/*.egtra t/tra/*.tra t/tra/*/*.tra});
+            my $self = shift;
+            $self->depends_on('code');
+            exec($^X . q{ util/myprove --source T --source TRA --source EGTRA --source TCC -r t/ t/*/*/*.tcc t/*/*/*.egtra t/tra/*.tra t/tra/*/*.tra});
         }
     "
 );
@@ -22,11 +24,12 @@ my $build = $class->new(
         'TAP::Harness' => '3.23',
         'Test::Base' => 0,
         'Test::Differences' => 0,
+        'ExtUtils::CBuilder' => 0,
     },
     configure_requires   => { 'Module::Build' => '0.38' },
     requires             => {
         'perl'               => '5.010001',
-        'Module::Compile' => '0',
+        'parent' => 0,
         'Sub::Name' => '0',
         'Scalar::Util' => '0',
         'File::stat' => '0',
@@ -44,6 +47,8 @@ my $build = $class->new(
     },
     PL_files => {
         'Config.tra.PL' => 'share/lib/Config.tra',
+        'lib/Nana/toke.re.PL' => 'lib/Nana/toke.c',
+        'lib/Nana/Token.pm.PL' => ['lib/Nana/Token.pm', 'lib/Nana/token.h'],
     },
     use_tap_harness => 1,
     test_files => [glob('t/*.t t/*/*/*.tcc t/*/*/*.egtra t/tra/*.tra t/tra/*/*.tra')],

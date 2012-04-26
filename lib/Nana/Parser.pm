@@ -8,21 +8,19 @@ use Carp;
 use Data::Dumper;
 use Scalar::Util qw(refaddr);
 use Sub::Name;
+use XSLoader;
+use Nana::Token;
 
-our $VERSION='0.01';
+our $VERSION='0.02';
+
+XSLoader::load('Nana::Parser', $VERSION);
 
 # TODO:
-# qr() q() qq()
-# "" ''
 # #{ } in string literal
 # <<'...' <<"..."
-# class call
-# -> { } lambda.
 # arguments with types
 # do-while?
 # //x
-# last
-# next
 
 our $LINENO;
 our $START;
@@ -95,6 +93,7 @@ sub any {
 sub left_op {
     my ($upper, $ops) = @_;
     confess "\$ops must be ArrayRef" unless ref $ops eq 'ARRAY';
+    # TODO: will be deprecate
 
     sub {
         my $c = shift;
@@ -110,6 +109,30 @@ sub left_op {
         return ($c, $ret);
     }
 }
+sub left_op2 {
+    my ($upper, $ops) = @_;
+    confess "\$ops must be HashRef" unless ref $ops eq 'HASH';
+
+    sub {
+        my $c = shift;
+        ($c, my $lhs) = $upper->($c)
+            or return;
+        my $ret = $lhs;
+        while (1) {
+            my ($used, $token_id) = _token_op($c);
+            last unless $token_id;
+
+            my $op = $ops->{$token_id}
+                or last;
+
+            $c = substr($c, $used);
+            ($c, my $rhs) = $upper->($c)
+                or die "syntax error  after '$op' line $LINENO";
+            $ret = _node($op, $ret, $rhs);
+        }
+        return ($c, $ret);
+    }
+}
 
 sub nonassoc_op {
     my ($upper, $ops) = @_;
@@ -118,8 +141,11 @@ sub nonassoc_op {
         my $c = shift;
         ($c, my $lhs) = $upper->($c)
             or return;
-        ($c, my $op) = match($c, @$ops)
-            or return;
+        my ($used, $token_id) = _token_op($c);
+        return ($c, $lhs) unless $token_id;
+        my $op = $ops->{$token_id}
+            or return ($c, $lhs);
+        $c = substr($c, $used);
         ($c, my $rhs) = $upper->($c)
             or die "Expression required after $op line $LINENO";
         return ($c, _node2($op, $START, $lhs, $rhs));
@@ -458,22 +484,6 @@ rule('else_clause', [
 ]);
 
 # skip whitespace with line counting
-sub skip_ws {
-    local $_ = shift;
-    confess "[BUG]" unless defined $_;
-
-std:
-    s/^[ \t\f]// && goto std;
-    s/^#[^\n]*\n/++$LINENO;''/ge && goto std;
-    if (s/^__END__\n.+//s) {
-        # $END++;
-        return ('', 1);
-    }
-    s/^\n/++$LINENO;''/e && goto std;
-
-
-    return ($_);
-}
 
 rule('expression', [
     sub {
@@ -562,7 +572,7 @@ rule('not_expression', [
 ]);
 
 rule('comma_expression', [
-    left_op(\&assign_expression, [','])
+    left_op2(\&assign_expression, +{TOKEN_COMMA() => ','})
 ]);
 
 # %right
@@ -571,13 +581,31 @@ rule('assign_expression', [
         my $c = shift;
         ($c, my $rhs) = three_expression($c)
             or return;
-        ($c, my $op) = match($c, [qr{^=(?![=><])}, '='], qw(*= += /= %= x= -= <<= >>= **= &= |= ^=), [qr{^\|\|=}, '||='])
-            or return;
-        ($c, my $lhs) = expression($c)
-            or _err "Cannot get expression after $op";
-        return ($c, _node($op, $rhs, $lhs));
-    },
-    \&three_expression
+        my ($used, $token_id) = _token_op($c);
+        my $op = +{
+            TOKEN_ASSIGN()        => '=',
+            TOKEN_MUL_ASSIGN()    => '*=',
+            TOKEN_PLUS_ASSIGN()   => '+=',
+            TOKEN_DIV_ASSIGN()    => '/=',
+            TOKEN_MOD_ASSIGN()    => '%=',
+            TOKEN_MINUS_ASSIGN()  => '-=',
+            TOKEN_LSHIFT_ASSIGN() => '<<=',
+            TOKEN_RSHIFT_ASSIGN() => '>>=',
+            TOKEN_POW_ASSIGN()    => '**=',
+            TOKEN_AND_ASSIGN()    => '&=',
+            TOKEN_OR_ASSIGN()     => '|=',
+            TOKEN_XOR_ASSIGN()    => '^=',
+            TOKEN_OROR_ASSIGN()   => '||=',
+        }->{$token_id};
+        if ($op) {
+            $c = substr($c, $used);
+            ($c, my $lhs) = expression($c)
+                or _err "Cannot get expression after $op";
+            return ($c, _node($op, $rhs, $lhs));
+        } else {
+            return ($c, $rhs);
+        }
+    }
 ]);
 
 # %right
@@ -600,75 +628,79 @@ rule('three_expression', [
 ]);
 
 rule('dotdot_expression', [
-    left_op(\&oror_expression, ['..', '...'])
+    left_op2(\&oror_expression, +{ TOKEN_DOTDOT() => '..', TOKEN_DOTDOTDOT() => '...'})
 ]);
 
 rule('oror_expression', [
-    left_op(\&andand_expression, ['||', '//'])
+    left_op2(\&andand_expression, +{ TOKEN_OROR() => '||' })
 ]);
 
 rule('andand_expression', [
-    left_op(\&or_expression, ['&&'])
+    left_op2(\&or_expression, {TOKEN_ANDAND() => '&&'})
 ]);
 
 rule('or_expression', [
-    left_op(\&and_expression, ['|', '^'])
+    left_op2(\&and_expression, +{TOKEN_OR() => '|', TOKEN_XOR() => '^'})
 ]);
 
 rule('and_expression', [
-    left_op(\&equality_expression, ['&'])
+    left_op2(\&equality_expression, {TOKEN_AND() => '&'})
 ]);
 
 rule('equality_expression', [
-    nonassoc_op(\&cmp_expression, [qw(== != <=> ~~)]),
-    \&cmp_expression
+    nonassoc_op(\&cmp_expression, {TOKEN_EQUAL_EQUAL() => '==', TOKEN_NOT_EQUAL() => '!=', TOKEN_CMP() => '<=>'})
 ]);
 
 rule('cmp_expression', [
-    nonassoc_op(\&shift_expression, [qw(< > <= >=)]),
-    \&shift_expression
+    nonassoc_op(\&shift_expression, {TOKEN_GT() => '<', TOKEN_LT() => '>', TOKEN_GE() => '<=', TOKEN_LE() => '>='})
 ]);
 
 rule('shift_expression', [
-    left_op(\&additive_expression, ['<<', '>>'])
+    left_op2(\&additive_expression, +{ TOKEN_LSHIFT() => '<<', TOKEN_RSHIFT() => '>>'})
 ]);
 
 rule('additive_expression', [
-    left_op(\&term, [[qr{^-(?![=a-z>-])}, '-'], [qr{^\+(?![\+=])}, '+']])
+    left_op2(\&term, +{ TOKEN_MINUS() => '-', TOKEN_PLUS() => '+'})
 ]);
 
 rule('term', [
-    left_op(\&regexp_match, ['*', '/', '%', [
-        qr{^x(?![a-zA-Z])}, 'x'
-    ]]),
+    left_op2(\&regexp_match, +{
+        TOKEN_MUL() => '*',
+        TOKEN_DIV() => '/',
+        TOKEN_MOD() => '%',
+    }),
 ]);
 
 rule('regexp_match', [
-    left_op(\&unary, ['=~', '!~'])
+    left_op2(\&unary, +{ TOKEN_REGEXP_MATCH() =>'=~', TOKEN_REGEXP_NOT_MATCH() => '!~'})
 ]);
 
 rule('unary', [
     sub {
         my $c = shift;
-        ($c, my $op) = match($c, '!', '~', '\\', , [qr{^\+(?![\+=])}, '+'], [qr{^-(?![=>a-z-])}, '-'], '*') or return;
-        ($c, my $ex) = unary($c)
-            or return;
-        return ($c, _node("UNARY$op", $ex));
-    },
-    sub {
-        # file test
-        my $c = shift;
-        ($c, my $op) = match($c,
-                # filetest
-                +[qr{^-s(?=[\( \t])}, "-s"],
-                +[qr{^-e(?=[\( \t])}, "-e"],
-                +[qr{^-f(?=[\( \t])}, "-f"],
-                +[qr{^-x(?=[\( \t])}, "-x"],
-                +[qr{^-d(?=[\( \t])}, "-d"],
-            ) or return;
-        ($c, my $ex) = pow($c)
-            or return;
-        return ($c, _node("UNARY$op", $ex));
+        my ($used, $token_id) = _token_op($c);
+        if ($token_id == TOKEN_FILETEST) {
+            # file test
+            my $op = substr($c, $used-2, 2);
+            $c = substr($c, $used);
+            ($c, my $ex) = pow($c)
+                or return;
+            return ($c, _node("UNARY$op", $ex));
+        } else {
+            my $op = +{
+                TOKEN_NOT() => '!',
+                TOKEN_TILDE() => '~',
+                TOKEN_REF() => '\\',
+                TOKEN_PLUS() => '+',
+                TOKEN_MINUS() => '-',
+                TOKEN_MUL() => '*',
+            }->{$token_id};
+            return unless $op;
+            $c = substr($c, $used);
+            ($c, my $ex) = unary($c)
+                or _err "Missing expression after $op";
+            return ($c, _node("UNARY$op", $ex));
+        }
     },
     \&pow
 ]);
@@ -680,12 +712,15 @@ rule('pow', [
         my $c = shift;
         ($c, my $lhs) = incdec($c)
             or return;
-        (my $c2) = match($c, '**')
-            or return ($c, $lhs);
-        $c = $c2;
-        ($c, my $rhs) = pow($c)
-            or die "Missing expression after '**'";
-        return ($c, _node("**", $lhs, $rhs));
+        my ($len, $token) = _token_op($c);
+        if ($token && $token == TOKEN_POW) {
+            $c = substr($c, $len);
+            ($c, my $rhs) = pow($c)
+                or die "Missing expression after '**'";
+            return ($c, _node("**", $lhs, $rhs));
+        } else {
+            return ($c, $lhs);
+        }
     },
 ]);
 
@@ -693,21 +728,42 @@ rule('incdec', [
     sub {
         # ++$i or --$i
         my $c = shift;
-        ($c, my $type ) = match($c, '++', '--')
-            or return;
-        ($c, my $object) = method_call($c)
-            or return;
-        return ($c, _node2($type eq '++' ? "PREINC" : 'PREDEC', $START, $object));
+        my ($len, $token) = _token_op($c);
+        if ($token) {
+            if ($token == TOKEN_PLUSPLUS) {
+                $c = substr($c, $len);
+                ($c, my $object) = method_call($c)
+                    or return;
+                return ($c, _node2("PREINC", $START, $object));
+            } elsif ($token == TOKEN_MINUSMINUS) {
+                $c = substr($c, $len);
+                ($c, my $object) = method_call($c)
+                    or return;
+                return ($c, _node2('PREDEC', $START, $object));
+            }
+        }
+        return ();
     },
     sub {
         # $i++ or $i--
         my $c = shift;
         ($c, my $object) = method_call($c)
             or return;
-        (my $c2, my $type) = match($c, '++', '--')
-            or return ($c, $object);
-        $c = $c2;
-        return ($c, _node2($type eq '++' ? "POSTINC" : 'POSTDEC', $START, $object));
+
+        my ($len, $token) = _token_op($c);
+        if ($token) {
+            if ($token == TOKEN_PLUSPLUS) {
+                $c = substr($c, $len);
+                return ($c, _node2("POSTINC", $START, $object));
+            } elsif ($token == TOKEN_MINUSMINUS) {
+                $c = substr($c, $len);
+                return ($c, _node2('POSTDEC', $START, $object));
+            } else {
+                return ($c, $object); # ++, -- is optional
+            }
+        } else {
+            return ($c, $object); # ++, -- is optional
+        }
     },
 ]);
 
@@ -860,24 +916,110 @@ rule('variable', [
 
 rule('primary', [
     sub {
-        # -> $x { }
         my $c = shift;
 
-        ($c) = match($c, [qr{^->(?![>])}, '->'])
-            or return;
+        my ($used, $token_id) = _token_op($c);
+        if ($token_id == TOKEN_LAMBDA) { # -> $x { }
+            $c = substr($c, $used);
 
-        my @params;
-        while ((my $c2, my $param) = variable($c)) {
-            push @params, $param;
-            $c = $c2;
-            my ($c3) = match($c, ',')
-                or last;
-            $c = $c3;
+            my @params;
+            while ((my $c2, my $param) = variable($c)) {
+                push @params, $param;
+                $c = $c2;
+                my ($c3) = match($c, ',')
+                    or last;
+                $c = $c3;
+            }
+
+            ($c, my $block) = block($c)
+                or _err "expected block after ->";
+            return ($c, _node2('LAMBDA', $START, \@params, $block));
+        } elsif ($token_id == TOKEN_DEREF) {
+            $c = substr($c, $used);
+
+            ($c, my $ret) = expression($c)
+                or return;
+            ($c) = match($c, '}')
+                or _err "Closing brace is not found after \${ operator";
+            return ($c, _node("DEREF", $ret));
+        } elsif ($token_id == TOKEN_LBRACKET) {
+            # array creation
+            # [1, 2, 3]
+
+            $c = substr($c, $used);
+            my @body;
+            while (my ($c2, $part) = assign_expression($c)) {
+                $c = $c2;
+                push @body, $part;
+
+                my ($c3) = match($c, ',');
+                last unless defined $c3;
+                $c = $c3;
+            }
+            ($c) = match($c, "]")
+                or return;
+            return ($c, _node2('ARRAY', $START, \@body));
+        } elsif ($token_id == TOKEN_STRING_SQ) { # '
+            return _sq_string(substr($c, $used), q{'});
+        } elsif ($token_id == TOKEN_STRING_Q_START) { # q{
+            return _sq_string(substr($c, $used), _closechar(substr($c, $used-1, 1)));
+        } elsif ($token_id == TOKEN_STRING_DQ) { # "
+            return _dq_string(substr($c, $used), q{"});
+        } elsif ($token_id == TOKEN_STRING_QQ_START) { # qq{
+            return _dq_string(substr($c, $used), _closechar(substr($c, $used-1, 1)));
+        } elsif ($token_id == TOKEN_DIV) { # /
+            return _regexp(substr($c, $used), q{/});
+        } elsif ($token_id == TOKEN_REGEXP_QR_START) { # qr{
+            return _regexp(substr($c, $used), _closechar(substr($c, $used-1, 1)));
+        } elsif ($token_id == TOKEN_QW_START) { # qw{
+            return _qw_literal(substr($c, $used), _closechar(substr($c, $used-1, 1)));
+        } elsif ($token_id ==TOKEN_HEREDOC_SQ_START) { # <<'
+            $c = substr($c, $used);
+            $c =~ s/^([^, \t\n']+)//
+                or die "Parsing failed on heredoc LINE $LINENO";
+            my $marker = $1;
+            ($c) = match($c, q{'})
+                or die "Parsing failed on heredoc LINE $LINENO";
+            my $buf = '';
+            push @HEREDOC_BUFS, \$buf;
+            push @HEREDOC_MARKERS, $marker;
+            return ($c, _node2('HEREDOC', $START, \$buf));
+        } elsif ($token_id ==TOKEN_BYTES_SQ) { # b'
+            return _bytes_sq(substr($c, $used), 0);
+        } elsif ($token_id ==TOKEN_BYTES_DQ) { # b"
+            return _bytes_dq(substr($c, $used), 0);
+        } elsif ($token_id == TOKEN_LPAREN) { # (
+            $c = substr($c, $used);
+            ($c, my $body) = expression($c)
+                or return;
+            ($c) = match($c, ")")
+                or return;
+            return ($c, _node2('()', $START, $body));
+        } elsif ($token_id == TOKEN_LBRACE) { # {
+            $c = substr($c, $used);
+            my @content;
+            while (my ($c2, $lhs) = assign_expression($c)) {
+                $lhs->[0] = 'IDENT' if $lhs->[0] eq 'PRIMARY_IDENT';
+                push @content, $lhs;
+                $c = $c2;
+                ($c2) = match($c, '=>')
+                    or return;
+                    # or die "Missing => in hash creation '@{[ substr($c, 10) ]}...' line $LINENO\n";
+                $c = $c2;
+                ($c, my $rhs) = assign_expression($c);
+                push @content, $rhs;
+
+                my ($c3) = match($c, ',');
+                last unless defined $c3;
+                $c = $c3;
+            }
+            ($c) = match($c, "}")
+                or return;
+                # or die "} not found on hash at line $LINENO";
+            return ($c, _node2('{}', $START, \@content));
+        } else {
+            return;
         }
-
-        ($c, my $block) = block($c)
-            or _err "expected block after ->";
-        return ($c, _node2('LAMBDA', $START, \@params, $block));
     },
     sub {
         # NV
@@ -891,25 +1033,6 @@ rule('primary', [
         $c =~ s/^(0x[0-9a-fA-F]+|0|[1-9][0-9]*)//
             or return;
         return ($c, _node('INT', $1));
-    },
-    \&string,
-    \&bytes,
-    \&regexp,
-    sub {
-        my $c = shift;
-        ($c) = match($c, '${')
-            or return;
-        ($c, my $ret) = expression($c)
-            or return;
-        ($c) = match($c, '}')
-            or return;
-        ($c, _node("DEREF", $ret));
-    },
-    sub {
-        my $c = shift;
-        ($c, my $ret) = _qw_literal($c)
-            or return;
-        ($c, $ret);
     },
     sub {
         my $c = shift;
@@ -971,286 +1094,175 @@ rule('primary', [
     },
     sub {
         my $c = shift;
-        ($c) = match($c, "[")
-            or return;
-        my @body;
-        while (my ($c2, $part) = assign_expression($c)) {
-            $c = $c2;
-            push @body, $part;
-
-            my ($c3) = match($c, ',');
-            last unless defined $c3;
-            $c = $c3;
-        }
-        ($c) = match($c, "]")
-            or return;
-        return ($c, _node2('ARRAY', $START, \@body));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, "{")
-            or return;
-        my @content;
-        while (my ($c2, $lhs) = assign_expression($c)) {
-            $lhs->[0] = 'IDENT' if $lhs->[0] eq 'PRIMARY_IDENT';
-            push @content, $lhs;
-            $c = $c2;
-            ($c2) = match($c, '=>')
-                or return;
-                # or die "Missing => in hash creation '@{[ substr($c, 10) ]}...' line $LINENO\n";
-            $c = $c2;
-            ($c, my $rhs) = assign_expression($c);
-            push @content, $rhs;
-
-            my ($c3) = match($c, ',');
-            last unless defined $c3;
-            $c = $c3;
-        }
-        ($c) = match($c, "}")
-            or return;
-            # or die "} not found on hash at line $LINENO";
-        return ($c, _node2('{}', $START, \@content));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, "(")
-            or return;
-        ($c, my $body) = expression($c);
-        ($c) = match($c, ")")
-            or return;
-        return ($c, _node2('()', $START, $body));
-    },
-    sub {
-        my $c = shift;
         ($c, my $word) = match($c, 'undef', 'true', 'false', 'self', '__FILE__', '__LINE__')
             or return;
         return ($c, _node2(uc($word), $START));
     },
-    sub {
-        my $c = shift;
-        ($c) = match($c, q{<<'})
-            or return;
-        $c =~ s/^([^, \t\n']+)//
-            or die "Parsing failed on heredoc LINE $LINENO";
-        my $marker = $1;
-        ($c) = match($c, q{'})
-            or die "Parsing failed on heredoc LINE $LINENO";
-        my $buf = '';
-        push @HEREDOC_BUFS, \$buf;
-        push @HEREDOC_MARKERS, $marker;
-        return ($c, _node2('HEREDOC', $START, \$buf));
-    },
 ]);
 
-rule('_qw_literal', [
-    sub {
-        my $src = shift;
+sub _qw_literal {
+    my ($src, $close) = @_;
+    $close = quotemeta($close);
 
-        $src =~ s!^qw([\(\[\!\{"])!!smx or return;
-        my $close = quotemeta +{
-            '(' => ')',
-            '[' => ']',
-            '{' => '}',
-            '!' => '!',
-            '"' => '"',
-        }->{$1};
-        my $ret = [];
-        while (1) {
-            ($src, my $got_end) = skip_ws($src);
-            return if $got_end;
-            if ($src =~ s!^([^ \t\Q$close\E]+)!!) {
-                push @$ret, $1;
-            } elsif ($src =~ s!^$close!!smx) {
-                return ($src, _node('QW', $ret));
-            } else {
-                die "Parse failed in qw() literal: $src";
-            }
+    my $ret = [];
+    while (1) {
+        ($src, my $got_end) = skip_ws($src);
+        return if $got_end;
+        if ($src =~ s!^([^ \t\Q$close\E]+)!!) {
+            push @$ret, $1;
+        } elsif ($src =~ s!^$close!!smx) {
+            return ($src, _node('QW', $ret));
+        } else {
+            die "Parse failed in qw() literal: $src";
         }
     }
-]);
+}
 
-rule('regexp', [
-    sub {
-        my $src = shift;
+sub _regexp {
+    my ($src, $close) = @_;
 
-        my $close2 = length($src) > 3 ? substr($src, 2, 1) : '';
-        ($src, my $close) = match($src, q{/}, [qr{^qr([!'\{\["\(])}, 'qq'])
-            or return;
-        if ($close eq 'qq') {
-            $close = {
-                '!' => '!',
-                '{' => '}',
-                '[' => ']',
-                '"' => '"',
-                "'" => "'",
-                "(" => ")",
-            }->{$close2};
+    my $buf = '';
+    while (1) {
+        if ($src =~ s!^$close!!) {
+            last;
+        } elsif (length($src) == 0) {
+            die "Unexpected EOF in regexp literal line $START";
+        } elsif ($src =~ s!^\\/!!) {
+            $buf .= q{/};
+        } elsif ($src =~ s/^(.)//) {
+            $buf .= $1;
+        } elsif ($src =~ s/^\n//) {
+            $buf .= "\n";
+            $LINENO++;
+        } else {
+            die 'should not reach here';
         }
-        my $buf = '';
-        while (1) {
-            if ($src =~ s!^$close!!) {
-                last;
-            } elsif (length($src) == 0) {
-                die "Unexpected EOF in regexp literal line $START";
-            } elsif ($src =~ s!^\\/!!) {
-                $buf .= q{/};
-            } elsif ($src =~ s/^(.)//) {
-                $buf .= $1;
-            } elsif ($src =~ s/^\n//) {
-                $buf .= "\n";
-                $LINENO++;
-            } else {
-                die 'should not reach here';
-            }
-        }
-        my $flags = '';
-        if ($src =~ s/^([sxmig]+)(?![a-z0-9_-])//) {
-            $flags = $1;
-        }
-        return ($src, _node('REGEXP', $buf, $flags));
-    },
-]);
+    }
+    my $flags = '';
+    if ($src =~ s/^([sxmig]+)(?![a-z0-9_-])//) {
+        $flags = $1;
+    }
+    return ($src, _node('REGEXP', $buf, $flags));
+}
 
-rule('bytes', [
-    sub {
-        # TODO: escape chars, etc.
-        my $src = shift;
+sub _bytes_dq {
+    # TODO: escape chars, etc.
+    my $src = shift;
 
-        ($src) = match($src, q{b"})
-            or return;
-        my $buf = '';
-        while (1) {
-            if ($src =~ s/^"//) {
-                last;
-            } elsif (length($src) == 0) {
-                die "Unexpected EOF in bytes literal line $START";
-            } elsif ($src =~ s/^\\"//) {
-                $buf .= q{"};
-            } elsif ($src =~ s/^(\\[0-7]{3})//) {
-                $buf .= $1;
-            } elsif ($src =~ s/^(\\x[0-9a-f]{2})//) {
-                $buf .= $1;
-            } elsif ($src =~ s/^(.)//) {
-                $buf .= $1;
-            } else {
-                die 'should not reach here';
-            }
+    my $buf = '';
+    while (1) {
+        if ($src =~ s/^"//) {
+            last;
+        } elsif (length($src) == 0) {
+            die "Unexpected EOF in bytes literal line $START";
+        } elsif ($src =~ s/^\\"//) {
+            $buf .= q{"};
+        } elsif ($src =~ s/^(\\[0-7]{3})//) {
+            $buf .= $1;
+        } elsif ($src =~ s/^(\\x[0-9a-f]{2})//) {
+            $buf .= $1;
+        } elsif ($src =~ s/^(.)//) {
+            $buf .= $1;
+        } else {
+            die 'should not reach here';
         }
-        return ($src, _node('BYTES', $buf));
-    },
-    sub {
-        # TODO: escape chars, etc.
-        my $src = shift;
+    }
+    return ($src, _node('BYTES', $buf));
+}
 
-        ($src) = match($src, q{b'})
-            or return;
-        my $buf = '';
-        while (1) {
-            if ($src =~ s/^'//) {
-                last;
-            } elsif (length($src) == 0) {
-                die "Unexpected EOF in bytes literal line $START";
-            } elsif ($src =~ s/^\\'//) {
-                $buf .= q{'};
-            } elsif ($src =~ s/^(\\[0-7]{3})//) {
-                $buf .= $1;
-            } elsif ($src =~ s/^(\\x[0-9a-f]{2})//) {
-                $buf .= $1;
-            } elsif ($src =~ s/^(.)//) {
-                $buf .= $1;
-            } else {
-                die 'should not reach here';
-            }
-        }
-        return ($src, _node('BYTES', $buf));
-    },
-]);
+sub _bytes_sq {
+    # TODO: escape chars, etc.
+    my $src = shift;
 
-rule('string', [
-    sub {
-        # TODO: escape chars, etc.
-        my $src = shift;
+    my $buf = '';
+    while (1) {
+        if ($src =~ s/^'//) {
+            last;
+        } elsif (length($src) == 0) {
+            die "Unexpected EOF in bytes literal line $START";
+        } elsif ($src =~ s/^\\'//) {
+            $buf .= q{'};
+        } elsif ($src =~ s/^(\\[0-7]{3})//) {
+            $buf .= $1;
+        } elsif ($src =~ s/^(\\x[0-9a-f]{2})//) {
+            $buf .= $1;
+        } elsif ($src =~ s/^(.)//) {
+            $buf .= $1;
+        } else {
+            die 'should not reach here';
+        }
+    }
+    return ($src, _node('BYTES', $buf));
+}
 
-        my $close2 = length($src) > 3 ? substr($src, 2, 1) : '';
-        ($src, my $close) = match($src, q{"}, [qr{^qq([!'\{\["\(])}, 'qq'])
-            or return;
-        if ($close eq 'qq') {
-            $close = {
-                '!' => '!',
-                '{' => '}',
-                '[' => ']',
-                '"' => '"',
-                "'" => "'",
-                "(" => ")",
-            }->{$close2};
-        }
-        my $bufref = \do { my $o="" };
-        my $node = _node('STR2', $bufref);
-        while (1) {
-            if ($src =~ s/^$close//) {
-                last;
-            } elsif (length($src) == 0) {
-                die "Unexpected EOF in string literal line $START";
-            } elsif ($src =~ s/^(\\0[0-7]{2})//) {
-                $$bufref .= eval 'qq{'.$1.'}';
-            } elsif ($src =~ s/^(\$[a-zA-Z_][a-zA-Z0-9_]*)//) {
-                $bufref = \do { my $o="" };
-                my $node2 = _node('STR2', $bufref);
-                $node = _node('STRCONCAT', $node, $1, $node2);
-            } elsif ($src =~ s/^\\0//) {
-                $$bufref.= qq{\0};
-            } elsif ($src =~ s/^\\r//) {
-                $$bufref .= qq{\r};
-            } elsif ($src =~ s/^\\t//) {
-                $$bufref .= qq{\t};
-            } elsif ($src =~ s/^\\n//) {
-                $$bufref .= qq{\n};
-            } elsif ($src =~ s/^\\n//) {
-                $$bufref .= qq{\n};
-            } elsif ($src =~ s/^\\"//) {
-                $$bufref .= q{"};
-            } elsif ($src =~ s/^(.)//ms) {
-                $$bufref .= $1;
-            } else {
-                _err 'should not reach here';
-            }
-        }
-        return ($src, $node);
-    },
-    sub {
-        # TODO: escape chars, etc.
-        my $src = shift;
+sub _dq_string {
+    # TODO: escape chars, etc.
+    my ($src, $close) = @_;
 
-        my $close2 = length($src) > 2 ? substr($src, 1, 1) : '';
-        ($src, my $close) = match($src, q{'}, [qr{^q([!'\{\["\(])}, 'q'])
-            or return;
-        if ($close eq 'q') {
-            $close = {
-                '!' => '!',
-                '{' => '}',
-                '[' => ']',
-                '"' => '"',
-                "'" => "'",
-                "(" => ")",
-            }->{$close2};
+    my $bufref = \do { my $o="" };
+    my $node = _node('STR2', $bufref);
+    while (1) {
+        if ($src =~ s/^$close//) {
+            last;
+        } elsif (length($src) == 0) {
+            die "Unexpected EOF in string literal line $START";
+        } elsif ($src =~ s/^(\\0[0-7]{2})//) {
+            $$bufref .= eval 'qq{'.$1.'}';
+        } elsif ($src =~ s/^(\$[a-zA-Z_][a-zA-Z0-9_]*)//) {
+            $bufref = \do { my $o="" };
+            my $node2 = _node('STR2', $bufref);
+            $node = _node('STRCONCAT', $node, $1, $node2);
+        } elsif ($src =~ s/^\\0//) {
+            $$bufref.= qq{\0};
+        } elsif ($src =~ s/^\\r//) {
+            $$bufref .= qq{\r};
+        } elsif ($src =~ s/^\\t//) {
+            $$bufref .= qq{\t};
+        } elsif ($src =~ s/^\\n//) {
+            $$bufref .= qq{\n};
+        } elsif ($src =~ s/^\\n//) {
+            $$bufref .= qq{\n};
+        } elsif ($src =~ s/^\\"//) {
+            $$bufref .= q{"};
+        } elsif ($src =~ s/^(.)//ms) {
+            $$bufref .= $1;
+        } else {
+            _err 'should not reach here';
         }
-        my $buf = '';
-        while (1) {
-            if ($src =~ s/^$close//) {
-                last;
-            } elsif (length($src) == 0) {
-                die "Unexpected EOF in string literal line $START";
-            } elsif ($src =~ s/^\\'//) {
-                $buf .= q{'};
-            } elsif ($src =~ s/^(.)//) {
-                $buf .= $1;
-            } else {
-                die 'should not reach here';
-            }
+    }
+    return ($src, $node);
+}
+
+sub _sq_string {
+    my ($src, $close) = @_;
+    my $buf = '';
+    while (1) {
+        if ($src =~ s/^$close//) {
+            last;
+        } elsif (length($src) == 0) {
+            die "Unexpected EOF in string literal line $START";
+        } elsif ($src =~ s/^\\'//) {
+            $buf .= q{'};
+        } elsif ($src =~ s/^(.)//) {
+            $buf .= $1;
+        } else {
+            die 'should not reach here';
         }
-        return ($src, _node('STR', $buf));
-    },
-]);
+    }
+    return ($src, _node('STR', $buf));
+}
+
+sub _closechar {
+    my $openchar = shift;
+    {
+        '!' => '!',
+        '{' => '}',
+        '[' => ']',
+        '"' => '"',
+        "'" => "'",
+        "(" => ")",
+    }->{$openchar};
+}
 
 1;
 __END__
