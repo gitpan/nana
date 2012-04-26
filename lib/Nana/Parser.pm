@@ -11,7 +11,7 @@ use Sub::Name;
 use XSLoader;
 use Nana::Token;
 
-our $VERSION='0.02';
+our $VERSION='0.03';
 
 XSLoader::load('Nana::Parser', $VERSION);
 
@@ -90,25 +90,6 @@ sub any {
 
 # see http://en.wikipedia.org/wiki/Parsing_expression_grammar#Indirect_left_recursion
 # %left operator.
-sub left_op {
-    my ($upper, $ops) = @_;
-    confess "\$ops must be ArrayRef" unless ref $ops eq 'ARRAY';
-    # TODO: will be deprecate
-
-    sub {
-        my $c = shift;
-        ($c, my $lhs) = $upper->($c)
-            or return;
-        my $ret = $lhs;
-        while (my ($c2, $op) = match($c, @$ops)) {
-            $c = $c2;
-            ($c, my $rhs) = $upper->($c)
-                or die "syntax error  after '$op' line $LINENO";
-            $ret = _node($op, $ret, $rhs);
-        }
-        return ($c, $ret);
-    }
-}
 sub left_op2 {
     my ($upper, $ops) = @_;
     confess "\$ops must be HashRef" unless ref $ops eq 'HASH';
@@ -280,80 +261,76 @@ rule('statement', [
     sub {
         my $c = shift;
         # class Name [isa Parent] {}
-        ($c) = match($c, 'class')
-            or return;
-        ($c, my $name) = class_name($c)
-            or die "class name expected after 'class' keyword";
-        my $base;
-        if ((my $c2) = match($c, 'is')) {
-            $c = $c2;
-            ($c, $base) = class_name($c)
-                or die "class name expected after 'is' keyword";
-            $base->[0] = "PRIMARY_IDENT";
-        }
-        ($c, my $block) = block($c)
-            or _err "Expected block after 'class' but not matched";
-        return ($c, _node2('CLASS', $START, $name, $base, $block));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'return')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression expected after 'return' keyword";
-        return ($c, _node2('RETURN', $START, $expression));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'use')
-            or return;
-        ($c, my $klass) = class_name($c)
-            or _err "class name is required after 'use' keyword";
-        my $type;
-        if ((my $c2) = match($c, '*')) {
-            $c = $c2;
-            $type = '*';
-        } elsif (my ($c3, $primary) = primary($c)) {
-            $c = $c3;
-            $type = $primary;
+        my ($used, $token_id) = _token_op($c);
+        if ($token_id == TOKEN_CLASS) {
+            $c = substr($c, $used);
+            ($c, my $name) = class_name($c)
+                or die "class name expected after 'class' keyword";
+            my $base;
+            if ((my $c2) = match($c, 'is')) {
+                $c = $c2;
+                ($c, $base) = class_name($c)
+                    or die "class name expected after 'is' keyword";
+                $base->[0] = "PRIMARY_IDENT";
+            }
+            ($c, my $block) = block($c)
+                or _err "Expected block after 'class' but not matched";
+            return ($c, _node2('CLASS', $START, $name, $base, $block));
+        } elsif ($token_id == TOKEN_RETURN) {
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression expected after 'return' keyword";
+            return ($c, _node2('RETURN', $START, $expression));
+        } elsif ($token_id == TOKEN_USE) {
+            $c = substr($c, $used);
+            ($c, my $klass) = class_name($c)
+                or _err "class name is required after 'use' keyword";
+            my $type;
+            if ((my $c2) = match($c, '*')) {
+                $c = $c2;
+                $type = '*';
+            } elsif (my ($c3, $primary) = primary($c)) {
+                $c = $c3;
+                $type = $primary;
+            } else {
+                $type = _node('UNDEF');
+            }
+            return ($c, _node2('USE', $START, $klass, $type));
+        } elsif ($token_id == TOKEN_UNLESS) {
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression is required after 'unless' keyword";
+            ($c, my $block) = block($c)
+                or die "block is required after unless keyword.";
+            return ($c, _node2('UNLESS', $START, $expression, $block));
+        } elsif ($token_id == TOKEN_IF) {
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression is required after 'if' keyword line $LINENO";
+            ($c, my $block) = block($c)
+                or die "block is required after if keyword line $LINENO.";
+            my $else;
+            if ((my $c2, $else) = else_clause($c)) { # optional
+                $c = $c2;
+            }
+            return ($c, _node2('IF', $START, $expression, $block, $else));
+        } elsif ($token_id == TOKEN_WHILE) {
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression is required after 'while' keyword";
+            ($c, my $block) = block($c)
+                or die "block is required after while keyword.";
+            return ($c, _node2('WHILE', $START, $expression, $block));
+        } elsif ($token_id == TOKEN_DO) {
+            $c = substr($c, $used);
+            ($c, my $block) = block($c)
+                or die "block is required after 'do' keyword.";
+            return ($c, _node2('DO', $START, $block));
+        } elsif ($token_id == TOKEN_LBRACE) {
+            return block($c);
         } else {
-            $type = _node('UNDEF');
+            return;
         }
-        return ($c, _node2('USE', $START, $klass, $type));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'unless')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression is required after 'unless' keyword";
-        ($c, my $block) = block($c)
-            or die "block is required after unless keyword.";
-        return ($c, _node2('UNLESS', $START, $expression, $block));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'if')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression is required after 'if' keyword line $LINENO";
-        ($c, my $block) = block($c)
-            or die "block is required after if keyword line $LINENO.";
-        my $else;
-        if ((my $c2, $else) = else_clause($c)) { # optional
-            $c = $c2;
-        }
-        return ($c, _node2('IF', $START, $expression, $block, $else));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'while')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression is required after 'while' keyword";
-        ($c, my $block) = block($c)
-            or die "block is required after while keyword.";
-        return ($c, _node2('WHILE', $START, $expression, $block));
     },
     sub { # foreach
         my $c = shift;
@@ -404,82 +381,62 @@ rule('statement', [
     },
     sub {
         my $c = shift;
-        ($c) = match($c, 'do')
-            or return;
-        ($c, my $block) = block($c)
-            or die "block is required after 'do' keyword.";
-        return ($c, _node2('DO', $START, $block));
-    },
-    sub {
-        # foo if bar
-        my $c = shift;
         ($c, my $block) = expression($c)
             or return;
-        ($c) = match($c, 'if')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression required after postfix-if statement";
-        return ($c, _node2('IF', $START, $expression, _node('BLOCK', $block), undef));
+        my ($used, $token_id) = _token_op($c);
+        if ($token_id == TOKEN_IF) {
+            # foo if bar
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression required after postfix-if statement";
+            return ($c, _node2('IF', $START, $expression, _node('BLOCK', $block), undef));
+        } elsif ($token_id == TOKEN_UNLESS) {
+            # foo unless bar
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression required after postfix-unless statement";
+            return ($c, _node2('UNLESS', $START, $expression, _node('BLOCK', $block), undef));
+        } elsif ($token_id == TOKEN_FOR) {
+            # foo for bar
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression required after postfix-for statement";
+            return ($c, _node2('FOREACH', $START, $expression, [], _node('BLOCK', $block)));
+        } elsif ($token_id == TOKEN_WHILE) {
+            # foo while bar
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or die "expression required after postfix-if statement";
+            return ($c, _node2('WHILE', $START, $expression, _node('BLOCK', $block)));
+        } else {
+            return ($c, $block);
+        }
     },
-    sub {
-        # foo if bar
-        my $c = shift;
-        ($c, my $block) = expression($c)
-            or return;
-        ($c) = match($c, 'unless')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression required after postfix-if statement";
-        return ($c, _node2('UNLESS', $START, $expression, _node('BLOCK', $block), undef));
-    },
-    sub {
-        # foo for bar
-        my $c = shift;
-        ($c, my $block) = expression($c)
-            or return;
-        ($c) = match($c, 'for')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression required after postfix-if statement";
-        return ($c, _node2('FOREACH', $START, $expression, [], _node('BLOCK', $block)));
-    },
-    sub {
-        # foo while bar
-        my $c = shift;
-        ($c, my $block) = expression($c)
-            or return;
-        ($c) = match($c, 'while')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression required after postfix-if statement";
-        return ($c, _node2('WHILE', $START, $expression, _node('BLOCK', $block)));
-    },
-    \&expression,
-    \&block,
 ]);
 
 rule('else_clause', [
     sub {
         my $c = shift;
-        ($c) = match($c, 'elsif')
-            or return;
-        ($c, my $expression) = expression($c)
-            or die "expression is required after 'elsif' keyword";
-        ($c, my $block) = block($c)
-            or die "block is required after elsif keyword.";
-        my $else;
-        if ((my $c2, $else) = else_clause($c)) { # optional
-            $c = $c2;
+        my ($used, $token_id) = _token_op($c);
+        if ($token_id == TOKEN_ELSIF) {
+            $c = substr($c, $used);
+            ($c, my $expression) = expression($c)
+                or _err "expression is required after 'elsif' keyword";
+            ($c, my $block) = block($c)
+                or _err "block is required after elsif keyword.";
+            my $else;
+            if ((my $c2, $else) = else_clause($c)) { # optional
+                $c = $c2;
+            }
+            return ($c, _node2('ELSIF', $START, $expression, $block, $else));
+        } elsif ($token_id == TOKEN_ELSE) {
+            $c = substr($c, $used);
+            ($c, my $block) = block($c)
+                or _err "block is required after else keyword.";
+            return ($c, _node2('ELSE', $START, $block));
+        } else {
+            return;
         }
-        return ($c, _node2('ELSIF', $START, $expression, $block, $else));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'else')
-            or return;
-        ($c, my $block) = block($c)
-            or die "block is required after elsif keyword.";
-        return ($c, _node2('ELSE', $START, $block));
     },
 ]);
 
@@ -488,47 +445,43 @@ rule('else_clause', [
 rule('expression', [
     sub {
         my $c = shift;
-        ($c, my $word) = match($c, 'last', 'next')
-            or return;
-        return ($c, _node2(uc($word), $START));
-    },
-    sub {
-        my $c = shift;
+        my ($used, $token_id) = _token_op($c);
+        if ($token_id == TOKEN_LAST) {
+            return (substr($c, $used), _node2('LAST', $START));
+        } elsif ($token_id == TOKEN_NEXT) {
+            return (substr($c, $used), _node2('NEXT', $START));
+        } elsif ($token_id == TOKEN_SUB) {
+            $c = substr($c, $used);
+            # name is optional thing.
+            # you can use anon sub.
+            my $name;
+            if ((my $c2, $name) = identifier($c)) {
+                $c = $c2;
+            }
 
-        ($c)           = match($c, 'sub') or return;
+            my $params;
+            if ((my $c2, $params) = parameters($c)) {
+                # optional
+                $c = $c2;
+            }
 
-        # name is optional thing.
-        # you can use anon sub.
-        my $name;
-        if ((my $c2, $name) = identifier($c)) {
-            $c = $c2;
+            ($c, my $block) = block($c)
+                or _err "expected block after sub in $name->[2]";
+            return ($c, _node2('SUB', $START, $name, $params, $block));
+        } elsif ($token_id == TOKEN_TRY) {
+            $c = substr($c, $used);
+            ($c, my $block) = block($c)
+                or _err "expected block after try keyword";
+            return ($c, _node2('TRY', $START, $block));
+        } elsif ($token_id == TOKEN_DIE) {
+            $c = substr($c, $used);
+            ($c, my $block) = expression($c)
+                or die "expected expression after die keyword";
+            return ($c, _node2('DIE', $START, $block));
+        } else {
+            return str_or_expression($c);
         }
-
-        my $params;
-        if ((my $c2, $params) = parameters($c)) {
-            # optional
-            $c = $c2;
-        }
-
-        ($c, my $block) = block($c)
-            or _err "expected block after sub in $name->[2]";
-        return ($c, _node2('SUB', $START, $name, $params, $block));
     },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'try') or return;
-        ($c, my $block) = block($c)
-            or die "expected block after try keyword";
-        return ($c, _node2('TRY', $START, $block));
-    },
-    sub {
-        my $c = shift;
-        ($c) = match($c, 'die') or return;
-        ($c, my $block) = expression($c)
-            or die "expected expression after die keyword";
-        return ($c, _node2('DIE', $START, $block));
-    },
-    \&str_or_expression,
 ]);
 
 rule('block', [
@@ -552,23 +505,26 @@ rule('block', [
 ]);
 
 rule('str_or_expression', [
-    left_op(\&str_and_expression, ['or', 'xor']),
+    left_op2(\&str_and_expression, +{ TOKEN_STR_OR() => 'or', TOKEN_STR_XOR() => 'xor'}),
 ]);
 
 rule('str_and_expression', [
-    left_op(\&not_expression, ['and']),
+    left_op2(\&not_expression, +{ TOKEN_STR_AND() => 'and'}),
 ]);
 
 rule('not_expression', [
     sub {
         my $src = shift;
-        ($src) = match($src, 'not')
-            or return;
-        ($src, my $body) = not_expression($src)
-            or die "Cannot get expression after 'not'";
-        return ($src, _node('not', $body));
+        my ($used, $token_id) = _token_op($src);
+        if ($token_id == TOKEN_STR_NOT) {
+            $src = substr($src, $used);
+            ($src, my $body) = not_expression($src)
+                or die "Cannot get expression after 'not'";
+            return ($src, _node('not', $body));
+        } else {
+            return comma_expression($src);
+        }
     },
-    \&comma_expression,
 ]);
 
 rule('comma_expression', [
@@ -614,17 +570,20 @@ rule('three_expression', [
         my $c = shift;
         ($c, my $t1) = dotdot_expression($c)
             or return;
-        ($c) = match($c, '?')
-            or return;
-        ($c, my $t2) = three_expression($c)
-            or return;
-        ($c) = match($c, ':')
-            or return;
-        ($c, my $t3) = three_expression($c)
-            or return;
-        return ($c, _node('?:', $t1, $t2, $t3));
+        my ($used, $token_id) = _token_op($c);
+        if ($token_id == TOKEN_QUESTION) {
+            $c = substr($c, $used);
+            ($c, my $t2) = three_expression($c)
+                or return;
+            ($c) = match($c, ':')
+                or return;
+            ($c, my $t3) = three_expression($c)
+                or return;
+            return ($c, _node('?:', $t1, $t2, $t3));
+        } else {
+            return ($c, $t1);
+        }
     },
-    \&dotdot_expression
 ]);
 
 rule('dotdot_expression', [
@@ -1017,22 +976,34 @@ rule('primary', [
                 or return;
                 # or die "} not found on hash at line $LINENO";
             return ($c, _node2('{}', $START, \@content));
+        } elsif ($token_id == TOKEN_INTEGER) {
+            $c =~ s/^(0x[0-9a-fA-F]+|0|[1-9][0-9]*)//
+                or return;
+            return ($c, _node('INT', $1));
+        } elsif ($token_id == TOKEN_DOUBLE) {
+            $c =~ s/^((?:[1-9][0-9]*|0)\.[0-9]+)// or return;
+            return ($c, _node('DOUBLE', $1));
+        } elsif ($token_id == TOKEN_UNDEF) {
+            $c = substr($c, $used);
+            return ($c, _node('UNDEF', $LINENO));
+        } elsif ($token_id == TOKEN_TRUE) {
+            $c = substr($c, $used);
+            return ($c, _node('TRUE', $LINENO));
+        } elsif ($token_id == TOKEN_FALSE) {
+            $c = substr($c, $used);
+            return ($c, _node('FALSE', $LINENO));
+        } elsif ($token_id == TOKEN_SELF) {
+            $c = substr($c, $used);
+            return ($c, _node('SELF', $LINENO));
+        } elsif ($token_id == TOKEN_FILE) {
+            $c = substr($c, $used);
+            return ($c, _node('__FILE__', $LINENO));
+        } elsif ($token_id == TOKEN_LINE) {
+            $c = substr($c, $used);
+            return ($c, _node('INT', $LINENO));
         } else {
             return;
         }
-    },
-    sub {
-        # NV
-        my $c = shift;
-        $c =~ s/^((?:[1-9][0-9]*|0)\.[0-9]+)// or return;
-        return ($c, _node('DOUBLE', $1));
-    },
-    sub {
-        # int
-        my $c = shift;
-        $c =~ s/^(0x[0-9a-fA-F]+|0|[1-9][0-9]*)//
-            or return;
-        return ($c, _node('INT', $1));
     },
     sub {
         my $c = shift;
@@ -1068,12 +1039,6 @@ rule('primary', [
     },
     sub {
         my $c = shift;
-        $c =~ s/^__LINE__//
-            or return;
-        return ($c, _node('INT', $LINENO));
-    },
-    sub {
-        my $c = shift;
         ($c, my $ret) = class_name($c)
             or return;
         $ret->[0] = "PRIMARY_IDENT";
@@ -1094,7 +1059,7 @@ rule('primary', [
     },
     sub {
         my $c = shift;
-        ($c, my $word) = match($c, 'undef', 'true', 'false', 'self', '__FILE__', '__LINE__')
+        ($c, my $word) = match($c, 'self', '__FILE__')
             or return;
         return ($c, _node2(uc($word), $START));
     },
