@@ -26,7 +26,7 @@ no_index:
 provides:
   Nana::Parser:
     file: lib/Nana/Parser.pm
-    version: 0.05
+    version: 0.06
   Nana::Translator::Perl:
     file: lib/Nana/Translator/Perl.pm
     version: 0
@@ -44,6 +44,12 @@ provides:
     version: 0
   Nana::Translator::Perl::Object:
     file: lib/Nana/Translator/Perl/Object.pm
+    version: 0
+  Nana::Translator::Perl::PerlObject:
+    file: lib/Nana/Translator/Perl/PerlPackage.pm
+    version: 0
+  Nana::Translator::Perl::PerlPackage:
+    file: lib/Nana/Translator/Perl/PerlPackage.pm
     version: 0
   Nana::Translator::Perl::Range:
     file: lib/Nana/Translator/Perl/Range.pm
@@ -70,4 +76,4 @@ requires:
   perl: 5.010001
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.05
+version: 0.06
