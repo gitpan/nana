@@ -4,7 +4,7 @@
       "unknown"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Module::Build version 0.4, CPAN::Meta::Converter version 2.120921",
+   "generated_by" : "Module::Build version 0.38, CPAN::Meta::Converter version 2.112150",
    "license" : [
       "perl_5"
    ],
@@ -23,11 +23,11 @@
    "prereqs" : {
       "build" : {
          "requires" : {
-            "Capture::Tiny" : "0",
-            "ExtUtils::CBuilder" : "0",
+            "Capture::Tiny" : 0,
+            "ExtUtils::CBuilder" : 0,
             "TAP::Harness" : "3.23",
-            "Test::Base" : "0",
-            "Test::Differences" : "0",
+            "Test::Base" : 0,
+            "Test::Differences" : 0,
             "Test::More" : "0.98"
          }
       },
@@ -41,11 +41,12 @@
             "Devel::GlobalDestruction" : "0.04",
             "Exporter" : "5.58",
             "File::ShareDir" : "1.03",
-            "File::stat" : "0",
-            "Getopt::Long::Descriptive" : "0",
-            "Scalar::Util" : "0",
-            "Sub::Name" : "0",
-            "parent" : "0",
+            "File::stat" : 0,
+            "Getopt::Long::Descriptive" : 0,
+            "JSON" : "2",
+            "Scalar::Util" : 0,
+            "Sub::Name" : 0,
+            "parent" : 0,
             "perl" : "5.010001"
          }
       }
@@ -53,7 +54,7 @@
    "provides" : {
       "Nana::Parser" : {
          "file" : "lib/Nana/Parser.pm",
-         "version" : "0.04"
+         "version" : "0.05"
       },
       "Nana::Translator::Perl" : {
          "file" : "lib/Nana/Translator/Perl.pm",
@@ -102,5 +103,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.04"
+   "version" : "0.05"
 }
