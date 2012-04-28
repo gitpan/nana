@@ -20,6 +20,7 @@ my $class = Module::Build->subclass(
             ) {
                 $self->run_perl_script('lib/Nana/toke.re.PL', [], ['lib/Nana/toke.c']) or die "lib/Nana/toke.re.PL failed";
                 $self->add_to_cleanup('lib/Nana/toke.c');
+                $self->add_to_cleanup('lib/Nana/toke.o');
                 unlink 'lib/Nana/Parser.c';
                 unlink 'lib/Nana/Parser.o';
             }
@@ -51,7 +52,7 @@ my $build = $class->new(
         'Getopt::Long::Descriptive' => 0,
         'File::ShareDir' => '1.03',
         'Devel::GlobalDestruction' => '0.04',
-        'JSON' => 2,
+        'JSON::XS' => 2,
     },
     no_index    => { 'directory' => [ 'inc', 't', 'xt' ] },
     name        => 'nana',

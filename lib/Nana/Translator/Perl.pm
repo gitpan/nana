@@ -48,8 +48,26 @@ sub _compile {
     confess "Bad AST" unless @$node > 0;
 
     for (qw(
-        **
-        % x
+        *= += /= %= x= -= <<= >>= **= &= |= ^= ||=
+    )) {
+        if ($node->[0] eq $_) {
+            (my $op = $_) =~ s/=$//;
+            return _compile([
+                '=',
+                $node->[1],
+                $node->[2],
+                [
+                    $op,
+                    $node->[1],
+                    $node->[2],
+                    $node->[3],
+                ]
+            ]);
+        }
+    }
+
+    for (qw(
+        %
         -
         >> <<
         <=> ~~
@@ -58,7 +76,6 @@ sub _compile {
         &&
         || //
         ...
-        *= += /= %= x= -= <<= >>= **= &= |= ^= ||=
         and
         or xor
     ), ',') {
@@ -92,12 +109,13 @@ sub _compile {
         '>'  => 'tora_op_gt',
         '<=' => 'tora_op_le',
         '>=' => 'tora_op_ge',
-        '==' => 'tora_op_equal',
+        '==' => 'tora_op_eq',
         '!=' => 'tora_op_ne',
         '..' => 'tora_make_range',
         '+'  => 'tora_op_add',
         '/'  => 'tora_op_div',
         '*'  => 'tora_op_mul',
+        '**'  => 'tora_op_pow',
     );
     if (my $func = $binops{$node->[0]}) {
         return "$func(". _compile($node->[2]) . ',' . _compile($node->[3]).')';
