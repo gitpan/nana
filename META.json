@@ -28,7 +28,8 @@
             "TAP::Harness" : "3.23",
             "Test::Base" : 0,
             "Test::Differences" : 0,
-            "Test::More" : "0.98"
+            "Test::More" : "0.98",
+            "Text::MicroTemplate" : 0
          }
       },
       "configure" : {
@@ -54,7 +55,7 @@
    "provides" : {
       "Nana::Parser" : {
          "file" : "lib/Nana/Parser.pm",
-         "version" : "0.07"
+         "version" : "0.08"
       },
       "Nana::Translator::Perl" : {
          "file" : "lib/Nana/Translator/Perl.pm",
@@ -111,5 +112,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.07"
+   "version" : "0.08"
 }
