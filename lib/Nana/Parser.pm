@@ -4,6 +4,7 @@ use warnings;
 use warnings FATAL => 'recursion';
 use utf8;
 use 5.10.0;
+use JSON::XS;
 use Carp;
 use Data::Dumper;
 use Scalar::Util qw(refaddr);
@@ -12,7 +13,7 @@ use XSLoader;
 use Nana::Token;
 use Nana::Node;
 
-our $VERSION='0.08';
+our $VERSION='0.09';
 
 XSLoader::load('Nana::Parser', $VERSION);
 

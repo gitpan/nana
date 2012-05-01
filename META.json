@@ -48,14 +48,18 @@
             "Scalar::Util" : 0,
             "Sub::Name" : 0,
             "parent" : 0,
-            "perl" : "5.010001"
+            "perl" : "5.012000"
          }
       }
    },
    "provides" : {
+      "JSON::XS::Boolean" : {
+         "file" : "lib/Nana/Translator/Perl/Runtime.pm",
+         "version" : 0
+      },
       "Nana::Parser" : {
          "file" : "lib/Nana/Parser.pm",
-         "version" : "0.08"
+         "version" : "0.09"
       },
       "Nana::Translator::Perl" : {
          "file" : "lib/Nana/Translator/Perl.pm",
@@ -112,5 +116,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.08"
+   "version" : "0.09"
 }

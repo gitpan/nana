@@ -16,7 +16,21 @@ use Nana::Translator::Perl::FilePackage;
 use Nana::Translator::Perl::Regexp;
 use Carp qw(croak);
 use B;
-use JSON ();
+use JSON::XS ();
+
+{
+    # ad-hoc patch :P
+    eval q!
+    package JSON::XS::Boolean;
+    use overload (
+        '""' => sub { ${$_[0]} == 1 ? 'true' : 'false' },
+        fallback => 1,
+    );
+    !;
+    die $@ if $@;
+    $JSON::XS::Boolean::true  = do { bless \(my $dummy = 1), "JSON::XS::Boolean" };
+    $JSON::XS::Boolean::false = do { bless \(my $dummy = 0), "JSON::XS::Boolean" };
+}
 
 use File::ShareDir ();
 use File::Spec;
@@ -53,8 +67,8 @@ our @EXPORT = qw(tora_call_func
     tora_op_not
 );
 
-*true = *JSON::true;
-*false = *JSON::false;
+*true = *JSON::XS::true;
+*false = *JSON::XS::false;
 
 sub _runtime_error {
     croak @_;
@@ -230,21 +244,6 @@ sub tora_op_eq {
     }
 }
 
-sub tora_op_not {
-    return tora_boolean($_[0]) ? JSON::false() : JSON::true();
-}
-
-sub tora_boolean {
-    my $type = typeof($_[0]);
-    if ($type eq 'Bool') {
-        return $_[0];
-    } elsif (!defined $_[0]) {
-        return JSON::false();
-    } else {
-        return JSON::true();
-    }
-}
-
 sub tora_op_ne {
     my ($lhs, $rhs) = @_;
     my $flags = B::svref_2object(\$lhs)->FLAGS;
@@ -262,60 +261,6 @@ sub tora_op_ne {
         use Devel::Peek;
         Dump($lhs);
         ...
-    }
-}
-
-sub tora_op_lt {
-    my ($lhs, $rhs) = @_;
-
-    my $flags = B::svref_2object(\$lhs)->FLAGS;
-    if ($flags & (B::SVp_IOK | B::SVp_NOK) and !( $flags & B::SVp_POK )) {
-        # IV or NV
-        return $lhs < $rhs ? true() : false();
-    } elsif ($flags & B::SVp_POK) {
-        return $lhs lt $rhs ? true() : false();
-    } else {
-        die "OOPS";
-    }
-}
-
-sub tora_op_gt {
-    my ($lhs, $rhs) = @_;
-
-    my $flags = B::svref_2object(\$lhs)->FLAGS;
-    if ($flags & (B::SVp_IOK | B::SVp_NOK) and !( $flags & B::SVp_POK )) {
-        # IV or NV
-        return $lhs > $rhs ? true() : false();
-    } elsif ($flags & B::SVp_POK) {
-        return $lhs gt $rhs ? true() : false();
-    } else {
-        die "OOPS";
-    }
-}
-
-sub tora_op_le {
-    my ($lhs, $rhs) = @_;
-    my $flags = B::svref_2object(\$lhs)->FLAGS;
-    if ($flags & (B::SVp_IOK | B::SVp_NOK) and !( $flags & B::SVp_POK )) {
-        # IV or NV
-        return $lhs <= $rhs ? true() : false();
-    } elsif ($flags & B::SVp_POK) {
-        return $lhs le $rhs ? true() : false();
-    } else {
-        die "OOPS";
-    }
-}
-
-sub tora_op_ge {
-    my ($lhs, $rhs) = @_;
-    my $flags = B::svref_2object(\$lhs)->FLAGS;
-    if ($flags & (B::SVp_IOK | B::SVp_NOK) and !( $flags & B::SVp_POK )) {
-        # IV or NV
-        return $lhs >= $rhs ? true() : false();
-    } elsif ($flags & B::SVp_POK) {
-        return $lhs ge $rhs ? true() : false();
-    } else {
-        die "OOPS";
     }
 }
 

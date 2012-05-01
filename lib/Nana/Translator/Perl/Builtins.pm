@@ -5,6 +5,7 @@ use utf8;
 use parent qw(Exporter);
 use 5.10.0;
 use B;
+use JSON::XS;
 use Data::Dumper;
 use Devel::Peek;
 use Nana::Translator::Perl::RegexpMatched;
@@ -275,7 +276,7 @@ my %built_class_src = (
         },
         exists => sub {
             return CORE::exists($_[0]->{$_[1]})
-                ? JSON::true() : JSON::false();
+                ? JSON::XS::true() : JSON::XS::false();
         },
         values => sub {
             return [CORE::values(%{$_[0]})];
@@ -295,14 +296,14 @@ my %built_class_src = (
             my $o = self;
             while ($o) {
                 if ($o == $_[1]) {
-                    return JSON::true();
+                    return JSON::XS::true();
                 }
                 $o = $o->superclass();
             }
             if ($_[1] == $TORA_BUILTIN_CLASSES{Object}) {
-                return JSON::true();
+                return JSON::XS::true();
             }
-            return JSON::false();
+            return JSON::XS::false();
         },
     },
     MetaClass => {
@@ -314,7 +315,7 @@ my %built_class_src = (
         },
         has_method => sub {
             return self->data->get_method($_[0])
-                ? JSON::true() : JSON::false();
+                ? JSON::XS::true() : JSON::XS::false();
         },
         superclass => sub {
             self->data->superclass();

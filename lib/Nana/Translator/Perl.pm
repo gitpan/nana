@@ -28,7 +28,7 @@ sub compile {
             'use utf8;',
             'use Nana::Translator::Perl::Runtime;',
             'use Nana::Translator::Perl::Builtins qw(%TORA_BUILTIN_CLASSES);',
-            'use JSON;',
+            'use JSON::XS;',
             'use Sub::Name;',
             'my $LIBPATH=$Nana::Translator::Perl::Runtime::LIBPATH;',
             'my $STDOUT=$Nana::Translator::Perl::Runtime::STDOUT;',
@@ -124,44 +124,7 @@ $DISPATCHER[NODE_CMP()] = sub {
         };
     }
 }
-
-sub _compile {
-    my ($node) = @_;
-
-    confess "Bad AST" unless $node;
-    confess "Bad AST" unless ref $node eq 'ARRAY';
-    confess "Bad AST" unless @$node > 0;
-
-    my $code = $DISPATCHER[$node->[0]];
-    return $code->($node) if $code;
-
-    for (qw(
-        ...
-        and
-        or xor
-    )) {
-        my $op = $_;
-        if ($node->[0] eq $op) {
-            if ($op =~ /[a-z]/) {
-                # 'cmp' to ' cmp '
-                $op = " $op ";
-            }
-            return '('. _compile($node->[2]) . $op . _compile($node->[3]).')';
-        }
-    }
-
-    if ($node->[0] eq NODE_ASSIGN) {
-        return _compile($node->[2]) . '=' . _compile($node->[3]);
-    }
-
-    if ($node->[0] eq NODE_FILE_TEST) {
-        if ($node->[2] eq '-s') {
-            return "(-s(" . _compile($node->[3]).'))';
-        } else {
-            return "(($node->[2](" . _compile($node->[3]).'))?JSON::true():JSON::false())';
-        }
-    }
-
+{
     my %binops = (
         NODE_LT()  => 'tora_op_lt',
         NODE_GT()  => 'tora_op_gt',
@@ -175,8 +138,67 @@ sub _compile {
         NODE_MUL()  => 'tora_op_mul',
         NODE_POW()  => 'tora_op_pow',
     );
-    if (my $func = $binops{$node->[0]}) {
-        return "$func(". _compile($node->[2]) . ',' . _compile($node->[3]).')';
+    while (my ($op, $func) = each %binops) {
+        $DISPATCHER[$op] = sub {
+            my $node = shift;
+            return "$func(". _compile($node->[2]) . ',' . _compile($node->[3]).')';
+        };
+    }
+}
+$DISPATCHER[NODE_BLOCK()] = sub { my $node = shift;
+    return '{' . _compile($node->[2]) . '}';
+};
+$DISPATCHER[NODE_MAKE_HASH()] = sub { my $node = shift;
+    return '{' . join(',', map { _compile($_) } @{$node->[2]}) . '}';
+};
+$DISPATCHER[NODE_MAKE_ARRAY()] = sub { my $node = shift;
+    return '[' . join(',', map { _compile($_) } @{$node->[2]}) . ']';
+};
+$DISPATCHER[NODE_VARIABLE()] = sub { my $node = shift;
+    return $node->[2];
+};
+$DISPATCHER[NODE_UNARY_PLUS()] = sub { my $node = shift;
+    return '(+' . _compile($node->[2]) . ')';
+};
+$DISPATCHER[NODE_UNARY_MINUS()] = sub { my $node = shift;
+    return '(-' . _compile($node->[2]) . ')';
+};
+$DISPATCHER[NODE_UNARY_NOT()] = sub { my $node = shift;
+    return 'tora_op_not('._compile($node->[2]).')';
+};
+$DISPATCHER[NODE_UNARY_TILDE()] = sub { my $node = shift;
+    return '~' . _compile($node->[2]);
+};
+$DISPATCHER[NODE_UNARY_MUL()] = sub { my $node = shift;
+    return '@{' . _compile($node->[2]) . '}';
+};
+$DISPATCHER[NODE_UNARY_REF()] = sub { my $node = shift;
+    return '\\' . _compile($node->[2]);
+};
+$DISPATCHER[NODE_REGEXP_MATCH()] = sub { my $node = shift;
+    return '('. _compile($node->[2]) . '=~' . _compile($node->[3]) .')';
+};
+
+sub _compile {
+    my ($node) = @_;
+
+    confess "Bad AST" unless $node;
+    confess "Bad AST" unless ref $node eq 'ARRAY';
+    confess "Bad AST" unless @$node > 0;
+
+    my $code = $DISPATCHER[$node->[0]];
+    return $code->($node) if $code;
+
+    if ($node->[0] eq NODE_ASSIGN) {
+        return _compile($node->[2]) . '=' . _compile($node->[3]);
+    }
+
+    if ($node->[0] eq NODE_FILE_TEST) {
+        if ($node->[2] eq '-s') {
+            return "(-s(" . _compile($node->[3]).'))';
+        } else {
+            return "(($node->[2](" . _compile($node->[3]).'))?JSON::XS::true():JSON::XS::false())';
+        }
     }
 
     if ($node->[0] eq NODE_THREE) {
@@ -478,39 +500,17 @@ sub _compile {
     } elsif ($node->[0] eq NODE_UNDEF) {
         return 'undef';
     } elsif ($node->[0] eq NODE_FALSE) {
-        return 'JSON::false()';
+        return 'JSON::XS::false()';
     } elsif ($node->[0] eq NODE_SELF) {
         return '($Nana::Translator::Perl::Runtime::TORA_SELF || die "Do not call self out of class.")';
     } elsif ($node->[0] eq NODE___FILE__) {
         return '__FILE__';
     } elsif ($node->[0] eq NODE_TRUE) {
-        return 'JSON::true()';
+        return 'JSON::XS::true()';
     } elsif ($node->[0] eq NODE_DOUBLE) {
         my $ret = "$node->[2]";
         $ret .= ".0" unless $ret =~ /\./;
         return $ret;
-    } elsif ($node->[0] eq NODE_BLOCK) {
-        return '{' . _compile($node->[2]) . '}';
-    } elsif ($node->[0] eq NODE_MAKE_HASH) {
-        return '{' . join(',', map { _compile($_) } @{$node->[2]}) . '}';
-    } elsif ($node->[0] eq NODE_MAKE_ARRAY) {
-        return '[' . join(',', map { _compile($_) } @{$node->[2]}) . ']';
-    } elsif ($node->[0] eq NODE_VARIABLE) {
-        return $node->[2];
-    } elsif ($node->[0] eq NODE_UNARY_PLUS) {
-        return '(+' . _compile($node->[2]) . ')';
-    } elsif ($node->[0] eq NODE_UNARY_MINUS) {
-        return '(-' . _compile($node->[2]) . ')';
-    } elsif ($node->[0] eq NODE_UNARY_NOT) {
-        return 'tora_op_not('._compile($node->[2]).')';
-    } elsif ($node->[0] eq NODE_UNARY_TILDE) {
-        return '~' . _compile($node->[2]);
-    } elsif ($node->[0] eq NODE_UNARY_MUL) {
-        return '@{' . _compile($node->[2]) . '}';
-    } elsif ($node->[0] eq NODE_UNARY_REF) {
-        return '\\' . _compile($node->[2]);
-    } elsif ($node->[0] eq NODE_REGEXP_MATCH) {
-        return '('. _compile($node->[2]) . '=~' . _compile($node->[3]) .')';
     } else {
         die "Unknown node type " . node_name($node->[0]);
         # die "Unknown node type " . Dumper($node);
