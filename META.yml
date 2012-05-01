@@ -13,7 +13,7 @@ build_requires:
 configure_requires:
   Module::Build: 0.38
 dynamic_config: 0
-generated_by: 'Module::Build version 0.38, CPAN::Meta::Converter version 2.112150'
+generated_by: 'Module::Build version 0.4, CPAN::Meta::Converter version 2.120630'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -25,12 +25,9 @@ no_index:
     - t
     - xt
 provides:
-  JSON::XS::Boolean:
-    file: lib/Nana/Translator/Perl/Runtime.pm
-    version: 0
   Nana::Parser:
     file: lib/Nana/Parser.pm
-    version: 0.09
+    version: 0.10
   Nana::Translator::Perl:
     file: lib/Nana/Translator/Perl.pm
     version: 0
@@ -80,4 +77,4 @@ requires:
   perl: 5.012000
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.09
+version: 0.10

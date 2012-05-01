@@ -21,7 +21,8 @@ use JSON::XS ();
 {
     # ad-hoc patch :P
     eval q!
-    package JSON::XS::Boolean;
+    package # hide from pause
+        JSON::XS::Boolean;
     use overload (
         '""' => sub { ${$_[0]} == 1 ? 'true' : 'false' },
         fallback => 1,
@@ -354,7 +355,7 @@ sub tora_deref:lvalue {
     if (ref $v eq 'Nana::Translator::Perl::Object') {
         $v->{data};
     } else {
-        die "You cannot dereference " . typeof($v);
+        _runtime_error "You cannot dereference " . typeof($v);
         $v; # dummy for :lvalue
     }
 }
