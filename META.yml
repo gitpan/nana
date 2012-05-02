@@ -4,6 +4,7 @@ author:
   - unknown
 build_requires:
   Capture::Tiny: 0
+  Devel::PPPort: 0
   ExtUtils::CBuilder: 0
   TAP::Harness: 3.23
   Test::Base: 0
@@ -27,7 +28,7 @@ no_index:
 provides:
   Nana::Parser:
     file: lib/Nana/Parser.pm
-    version: 0.11
+    version: 0.12
   Nana::Translator::Perl:
     file: lib/Nana/Translator/Perl.pm
     version: 0
@@ -36,6 +37,9 @@ provides:
     version: 0
   Nana::Translator::Perl::Class:
     file: lib/Nana/Translator/Perl/Class.pm
+    version: 0
+  Nana::Translator::Perl::Code:
+    file: lib/Nana/Translator/Perl/Code.pm
     version: 0
   Nana::Translator::Perl::Exception:
     file: lib/Nana/Translator/Perl/Exception.pm
@@ -77,4 +81,4 @@ requires:
   perl: 5.012000
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.11
+version: 0.12

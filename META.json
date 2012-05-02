@@ -24,6 +24,7 @@
       "build" : {
          "requires" : {
             "Capture::Tiny" : "0",
+            "Devel::PPPort" : "0",
             "ExtUtils::CBuilder" : "0",
             "TAP::Harness" : "3.23",
             "Test::Base" : "0",
@@ -55,7 +56,7 @@
    "provides" : {
       "Nana::Parser" : {
          "file" : "lib/Nana/Parser.pm",
-         "version" : "0.11"
+         "version" : "0.12"
       },
       "Nana::Translator::Perl" : {
          "file" : "lib/Nana/Translator/Perl.pm",
@@ -67,6 +68,10 @@
       },
       "Nana::Translator::Perl::Class" : {
          "file" : "lib/Nana/Translator/Perl/Class.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Code" : {
+         "file" : "lib/Nana/Translator/Perl/Code.pm",
          "version" : 0
       },
       "Nana::Translator::Perl::Exception" : {
@@ -112,5 +117,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.11"
+   "version" : "0.12"
 }
