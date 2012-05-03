@@ -28,7 +28,7 @@ no_index:
 provides:
   Nana::Parser:
     file: lib/Nana/Parser.pm
-    version: 0.12
+    version: 0.13
   Nana::Translator::Perl:
     file: lib/Nana/Translator/Perl.pm
     version: 0
@@ -81,4 +81,4 @@ requires:
   perl: 5.012000
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.12
+version: 0.13
