@@ -56,7 +56,7 @@
    "provides" : {
       "Nana::Parser" : {
          "file" : "lib/Nana/Parser.pm",
-         "version" : "0.15"
+         "version" : "0.16"
       },
       "Nana::Translator::Perl" : {
          "file" : "lib/Nana/Translator/Perl.pm",
@@ -64,6 +64,10 @@
       },
       "Nana::Translator::Perl::Builtins" : {
          "file" : "lib/Nana/Translator/Perl/Builtins.pm",
+         "version" : 0
+      },
+      "Nana::Translator::Perl::Bytes" : {
+         "file" : "lib/Nana/Translator/Perl/Bytes.pm",
          "version" : 0
       },
       "Nana::Translator::Perl::Class" : {
@@ -117,5 +121,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.15"
+   "version" : "0.16"
 }

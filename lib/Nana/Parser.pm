@@ -13,7 +13,7 @@ use XSLoader;
 use Nana::Token;
 use Nana::Node;
 
-our $VERSION='0.15';
+our $VERSION='0.16';
 
 XSLoader::load('Nana::Parser', $VERSION);
 
@@ -315,9 +315,9 @@ rule('statement', [
         } elsif ($token_id == TOKEN_UNLESS) {
             $c = substr($c, $used);
             ($c, my $expression) = expression($c)
-                or die "expression is required after 'unless' keyword";
+                or _err "expression is required after 'unless' keyword";
             ($c, my $block) = block($c)
-                or die "block is required after unless keyword.";
+                or _err "block is required after unless keyword.";
             return ($c, _node2(NODE_IF, $START, _node2(NODE_UNARY_NOT, $START, $expression), $block));
         } elsif ($token_id == TOKEN_IF) {
             $c = substr($c, $used);
