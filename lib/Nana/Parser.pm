@@ -13,7 +13,7 @@ use XSLoader;
 use Nana::Token;
 use Nana::Node;
 
-our $VERSION='0.16';
+our $VERSION='0.17';
 
 XSLoader::load('Nana::Parser', $VERSION);
 
@@ -248,7 +248,7 @@ rule('statement_list', [
                     $have_next_stmt++;
                 START:
                     if (defined(my $marker = shift @HEREDOC_MARKERS)) {
-                        while ($src =~ s/^(([^\n]+)(\n|$))//) {
+                        while ($src =~ s/^(([^\n]*)(\n|$))//) {
                             if ($2 eq $marker) {
                                 shift @HEREDOC_BUFS;
                                 goto START;

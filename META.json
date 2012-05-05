@@ -46,6 +46,7 @@
             "File::stat" : "0",
             "Getopt::Long::Descriptive" : "0",
             "JSON::XS" : "2",
+            "Plack" : "0",
             "Scalar::Util" : "0",
             "Sub::Name" : "0",
             "parent" : "0",
@@ -56,7 +57,7 @@
    "provides" : {
       "Nana::Parser" : {
          "file" : "lib/Nana/Parser.pm",
-         "version" : "0.16"
+         "version" : "0.17"
       },
       "Nana::Translator::Perl" : {
          "file" : "lib/Nana/Translator/Perl.pm",
@@ -113,6 +114,10 @@
       "Nana::Translator::Perl::Runtime" : {
          "file" : "lib/Nana/Translator/Perl/Runtime.pm",
          "version" : 0
+      },
+      "Tlack::Runner" : {
+         "file" : "lib/Tlack/Runner.pm",
+         "version" : 0
       }
    },
    "release_status" : "stable",
@@ -121,5 +126,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.16"
+   "version" : "0.17"
 }
