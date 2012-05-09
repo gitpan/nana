@@ -57,7 +57,7 @@
    "provides" : {
       "Nana::Parser" : {
          "file" : "lib/Nana/Parser.pm",
-         "version" : "0.21"
+         "version" : "0.22"
       },
       "Nana::Translator::Perl" : {
          "file" : "lib/Nana/Translator/Perl.pm",
@@ -126,5 +126,5 @@
          "http://dev.perl.org/licenses/"
       ]
    },
-   "version" : "0.21"
+   "version" : "0.22"
 }
